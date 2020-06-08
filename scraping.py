@@ -23,11 +23,6 @@ def getLectureInfo(url):
     tds_label = soup.find_all('td', class_='label')
     tds_left = soup.find_all('td', align='left')
 
-    # text = soup.get_text()
-    # lines_ = [line.strip() for line in text.splitlines() if line.strip() != '']
-    # for line in lines_:
-    #     print(line)
-
     for i in soup.select('br'):
         i.replace_with('***')
     
