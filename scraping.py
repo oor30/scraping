@@ -1,9 +1,10 @@
 import requests
 from bs4 import BeautifulSoup
-# from lxml import html
+from time import sleep
+import jaconv
 
 urls = []
-with open('lecture_urls.tsv', encoding='utf-8') as f:
+with open('/Users/kazuki/VisualStudioCode/scraping/lecture_urls.tsv', encoding='utf-8') as f:
     for line in f:
         urls.append(line)
 
@@ -17,27 +18,11 @@ def getLectureInfo(url):
     html_doc = res.text
     soup = BeautifulSoup(html_doc, 'html.parser')
 
-    tds_label_kougi = soup.find_all('td', class_='label_kougi')
-    tds_kougi = soup.find_all('td', class_='kougi')
-
-    tds_label = soup.find_all('td', class_='label')
-    tds_left = soup.find_all('td', align='left')
-
     for i in soup.select('br'):
         i.replace_with('***')
-    
-    # tds_label_kougi = soup.find_all('td', class_='label_kougi')
-    # tds_label = soup.find_all('td', class_='label')
-
-    # labels = []
-    # for td in tds_label:
-    #     labels += [td.get_text().strip()]
-    # print(labels)
 
     text = soup.get_text()
     lines = [line.strip() for line in text.splitlines() if line.strip() != '']
-    for line in lines:
-        print(line)
     
     lec_info = {}
     index = []
@@ -47,48 +32,53 @@ def getLectureInfo(url):
     for i in range(len(index) - 1):
         lec_info[keys[i].replace('***', '')] = ''
         for j in range(index[i]+1, index[i+1]):
-            lec_info[keys[i].replace('***', '')] += lines[j].replace('***', '\n') + '/'
+            lec_info[keys[i].replace('***', '')] += lines[j].replace('***', '\n')
+            if j != index[i+1]-1:
+                lec_info[keys[i].replace('***', '')] += '/'
 
     for k, v in lec_info.items():
         print(k + ':' + v)
 
-    # lec_info1 = {}
-    # indexes1 = []
-    # for key in keys1:
-    #     indexes1 += [lines.index(key)]
-    #     print(lines.index(key))
-    # for i in range(len(indexes1)-1):
-    #     if indexes1[i]+1 != indexes1[i+1]:
-    #         lec_info1[keys1[i]] = lines[indexes1[i]+1 : indexes1[i+1]]
-    #     else:
-    #         lec_info1[keys1[i]] = ['']
+    year = (int)(lec_info['開講年度'])
+    grade = (int)(jaconv.z2h(lec_info['対象学年'][0], digit=True, ascii=True))
+    timeroom = lec_info['開講学期・時間割・教室'].split('/')
+    dics = []
+    for i in timeroom:
+        dic = {}
+        dic['semester'] = i[0:3]
+        dic['week'] = i[4:7]
+        dic['period'] = i[8:11]
+        dic['room'] = i[12:]
+        dics.append(dic)
+    print(dics)
+    # lec_info['timeroom'] = dics
 
-    # lec_info2 = {}
-    # indexes2 = []
-    # for key in keys2:
-    #     indexes2 += [lines.index(key)]
-    #     print(lines.index(key))
-    # for i in range(len(indexes2)-1):
-    #     if indexes2[i]+1 != indexes2[i+1]:
-    #         lec_info2[keys2[i]] = lines[indexes2[i]+1 : indexes2[i+1]]
-    #     else:
-    #         lec_info2[keys2[i]] = ['']
+    return lec_info, dics
 
-    # print(lec_info1)
-    # print(lec_info2)
+from google.cloud import firestore
+c = 0
+for url in urls:
+    lecture_info, dics = getLectureInfo(url)
+    lecture_name = lecture_info['授業科目名']
 
-    # lecture_info = {}
-    # for td_label_kougi, td_kougi in zip(tds_label_kougi, tds_kougi):
-    #     lecture_info[td_label_kougi.get_text().strip()] = td_kougi.get_text().strip().replace('\r\n\r\n', '/').replace('\r', '').replace('\n', '').replace('\u3000', '').replace(' ', '')
-    # for td_label, td_left in zip(tds_label, tds_left):
-    #     for i in td_left.select('br'):
-    #         i.replace_with('/')
-    #     lecture_info[td_label.get_text().strip()] = td_left.get_text().strip()
-    # # print(tds_left)
-    return lec_info
+    # fileNeme = '/Users/kazuki/VisualStudioCode/scraping/lecture_info/2020/工学部/前学期/' + lecture_name + '.tsv'
+    # with open(fileNeme, 'w', encoding='utf-8') as f:
+    #     for k, v in lecture_info.items():
+    #         f.write(k + ':::' + v + '\n***')
+    db = firestore.Client()
+    doc_ref = db.collection(u'lectures').document(lecture_info['授業科目名'])
+    doc_ref.set(lecture_info)
+    cnt = 0
+    for dic in dics:
+        doc_ref2 = doc_ref.collection(u'timeroom').document(str(cnt))
+        doc_ref2.set(dic)
+        cnt += 1
+    c += 1
+    if c==5:
+        break;
+    sleep(2)
 
-lecture_info = getLectureInfo('https://alss-portal.gifu-u.ac.jp/campusweb/slbssbdr.do?value(risyunen)=2020&value(semekikn)=1&value(kougicd)=1TAA1304D0&value(crclumcd)=T-2018')
 
-with open('lecture_info.tsv', 'w', encoding='utf-8') as f:
-    for k, v in lecture_info.items():
-        f.write(k + ':' + v + '\n')
+# db = firestore.Client()
+# doc_ref = db.collection(u'lecture').document(u'hoge')
+# doc_ref.set(lecture_info)
